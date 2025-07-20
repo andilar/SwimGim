@@ -47,6 +47,7 @@ class Swimmer:
         self.current_timer = 0  # Timer für Gegenstrom
         self.animation_timer = 0  # Timer für Schwimmanimation
         self.stroke_phase = 0  # Phase der Schwimmbewegung (0-1)
+        self.active = True  # Schwimmer ist aktiv
         
         # Ausdauer nur für Spieler
         if self.is_player:
@@ -105,6 +106,10 @@ class Swimmer:
         
     def draw(self):
         """Zeichnet den Schwimmer mit animierten Armen und Beinen"""
+        # Zeichne nur aktive Schwimmer
+        if not self.active:
+            return
+            
         color = SWIMMER_COLOR if self.is_player else OPPONENT_COLOR
         head_color = arcade.color.PINK if self.is_player else arcade.color.LIGHT_GRAY
         
@@ -231,11 +236,15 @@ class Shark(Danger):
         self.is_diving = True
         self.dive_timer = 0
         
-        # Schwimmer wird zurück zum Start gesetzt
-        self.target.y = 50
-        # Ausdauer nur für Spieler zurücksetzen
+        # Schwimmer wird aus dem Spiel entfernt (gefressen)
         if self.target.is_player:
-            self.target.stamina_float = MAX_STAMINA
+            # Spieler wurde gefressen - Spiel vorbei
+            self.target.y = -100  # Verstecke unter dem Spielfeld
+            self.target.active = False  # Markiere als inaktiv
+        else:
+            # KI-Gegner wird komplett entfernt
+            self.target.y = -100  # Verstecke unter dem Spielfeld
+            self.target.active = False  # Markiere als inaktiv
         
     def draw(self):
         """Zeichnet den Hai"""
@@ -332,8 +341,40 @@ class SwimmingGame(arcade.View):
                     self.game_finished = True
                     self.winner = swimmer
                     
+            # Prüfen ob der Spieler noch aktiv ist (nicht gefressen)
+            if not self.player.active:
+                self.game_finished = True
+                self.winner = None  # Kein Gewinner - Spieler wurde gefressen
+                    
             # Gefahren-System updaten
             self.update_dangers(delta_time)
+            
+            # Text-Updates für bessere Performance
+            self.update_text_objects()
+    
+    def update_text_objects(self):
+        """Update alle Text-Objekte"""
+        # Prüfe ob Text-Objekte existieren
+        if not hasattr(self, 'stamina_text'):
+            return
+            
+        # Ausdauer-Texte
+        self.stamina_text.text = f"Ausdauer: {self.player.stamina_float:.1f}/{MAX_STAMINA}"
+        self.regen_text.text = f"Regeneration: +{STAMINA_RECOVERY_RATE}/s"
+        
+        # Gewinn-Texte
+        if self.game_finished:
+            if self.winner is None:
+                # Spieler wurde gefressen
+                self.win_text.text = "Du wurdest gefressen!"
+                self.win_text.color = arcade.color.RED
+            elif self.winner.is_player:
+                self.win_text.text = "Du hast gewonnen!"
+                self.win_text.color = arcade.color.GREEN
+            else:
+                self.win_text.text = "Du hast verloren!"
+                self.win_text.color = arcade.color.RED
+            self.restart_text.text = "Drücke R zum Neustarten"
     
     def update_dangers(self, delta_time):
         """Update für alle Gefahren"""
@@ -353,7 +394,7 @@ class SwimmingGame(arcade.View):
     def spawn_shark(self):
         """Spawnt einen neuen Hai"""
         # Wähle zufälligen Schwimmer als Ziel (bevorzuge Schwimmer weiter oben)
-        active_swimmers = [s for s in self.swimmers if s.y > 100]  # Nur Schwimmer die schon etwas geschwommen sind
+        active_swimmers = [s for s in self.swimmers if s.y > 100 and s.active]  # Nur aktive Schwimmer die schon etwas geschwommen sind
         if active_swimmers:
             # Wahrscheinlichkeit basierend auf Position - weiter vorne = wahrscheinlicher
             weights = [s.y for s in active_swimmers]
@@ -381,17 +422,27 @@ class SwimmingGame(arcade.View):
         
         # Gewinn-Nachricht anzeigen
         if self.game_finished:
-            if self.winner.is_player:
-                arcade.draw_text("Du hast gewonnen!", 
-                               SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 20,
-                               arcade.color.GREEN, 24, anchor_x="center")
+            if hasattr(self, 'win_text'):
+                self.win_text.draw()
+                self.restart_text.draw()
             else:
-                arcade.draw_text("Du hast verloren!", 
-                               SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 20,
-                               arcade.color.RED, 24, anchor_x="center")
-            arcade.draw_text("Drücke R zum Neustarten", 
-                           SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 20,
-                           arcade.color.WHITE, 20, anchor_x="center")
+                # Fallback für Gewinn-Nachrichten
+                if self.winner is None:
+                    # Spieler wurde gefressen
+                    arcade.draw_text("Du wurdest gefressen!", 
+                                   SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 20,
+                                   arcade.color.RED, 24, anchor_x="center")
+                elif self.winner.is_player:
+                    arcade.draw_text("Du hast gewonnen!", 
+                                   SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 20,
+                                   arcade.color.GREEN, 24, anchor_x="center")
+                else:
+                    arcade.draw_text("Du hast verloren!", 
+                                   SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 20,
+                                   arcade.color.RED, 24, anchor_x="center")
+                arcade.draw_text("Drücke R zum Neustarten", 
+                               SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 20,
+                               arcade.color.WHITE, 20, anchor_x="center")
     
     def draw_lanes(self):
         """Zeichnet die 8 Schwimmbahnen"""
@@ -412,10 +463,15 @@ class SwimmingGame(arcade.View):
         goal_y = SCREEN_HEIGHT - 70
         arcade.draw_line(0, goal_y, SCREEN_WIDTH, goal_y, arcade.color.YELLOW, 4)
         
-        # Bahnnummern
-        for i in range(LANE_COUNT):
-            x = i * LANE_WIDTH + LANE_WIDTH // 2
-            arcade.draw_text(f"{i+1}", x - 10, 25, arcade.color.WHITE, 16)
+        # Bahnnummern mit Text-Objekten (falls vorhanden)
+        if hasattr(self, 'lane_numbers'):
+            for lane_text in self.lane_numbers:
+                lane_text.draw()
+        else:
+            # Fallback: normale Text-Darstellung
+            for i in range(LANE_COUNT):
+                x = i * LANE_WIDTH + LANE_WIDTH // 2
+                arcade.draw_text(f"{i+1}", x - 10, 25, arcade.color.WHITE, 16)
     
     def draw_ui(self):
         """Zeichnet die Benutzeroberfläche"""
@@ -456,13 +512,19 @@ class SwimmingGame(arcade.View):
             stamina_rect = arcade.XYWH(bar_x + 3, bar_y - bar_height//2 + 3, stamina_width, bar_height - 6)
             arcade.draw_rect_filled(stamina_rect, color)
         
-        # Ausdauer-Text über dem Balken
-        arcade.draw_text(f"Ausdauer: {self.player.stamina_float:.1f}/{MAX_STAMINA}", 
-                        bar_x, bar_y + 18, arcade.color.WHITE, 16)
+        # Ausdauer-Text über dem Balken - mit Text-Objekt (falls vorhanden)
+        if hasattr(self, 'stamina_text'):
+            self.stamina_text.draw()
+        else:
+            arcade.draw_text(f"Ausdauer: {self.player.stamina_float:.1f}/{MAX_STAMINA}", 
+                            bar_x, bar_y + 18, arcade.color.WHITE, 16)
         
-        # Regenerations-Rate unter dem Balken
-        arcade.draw_text(f"Regeneration: +{STAMINA_RECOVERY_RATE}/s", 
-                        bar_x, bar_y - 22, arcade.color.CYAN, 14)
+        # Regenerations-Rate unter dem Balken - mit Text-Objekt (falls vorhanden)
+        if hasattr(self, 'regen_text'):
+            self.regen_text.draw()
+        else:
+            arcade.draw_text(f"Regeneration: +{STAMINA_RECOVERY_RATE}/s", 
+                            bar_x, bar_y - 22, arcade.color.CYAN, 14)
     
     def on_key_press(self, key, modifiers):
         """Behandelt Tasteneingaben"""
