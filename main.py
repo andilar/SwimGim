@@ -25,6 +25,10 @@ SWIMMER_SPEED = 30  # Pixel pro Schwimmzug
 CURRENT_INTERVAL = 1.0  # Sekunden zwischen Gegenstrom-Schüben
 CURRENT_PUSHBACK = 15  # Halbe Schwimmzuglänge (SWIMMER_SPEED / 2)
 
+# Ausdauer-Einstellungen
+MAX_STAMINA = 5  # Maximale Ausdauer (Schwimmzüge)
+STAMINA_RECOVERY_RATE = 1.5  # Ausdauer-Punkte pro Sekunde
+
 class Swimmer:
     def __init__(self, x, y, lane, is_player=True):
         self.x = x
@@ -38,10 +42,26 @@ class Swimmer:
         self.animation_timer = 0  # Timer für Schwimmanimation
         self.stroke_phase = 0  # Phase der Schwimmbewegung (0-1)
         
+        # Ausdauer nur für Spieler
+        if self.is_player:
+            self.stamina = MAX_STAMINA
+            # Kontinuierliche Ausdauer als Float für flüssige Regeneration
+            self.stamina_float = float(MAX_STAMINA)
+        
     def swim_stroke(self):
         """Führt einen Schwimmzug aus"""
-        self.y += SWIMMER_SPEED
-        self.strokes += 1
+        if self.is_player:
+            # Prüfe Ausdauer für Spieler (mindestens 1 Punkt nötig)
+            if self.stamina_float >= 1.0:
+                self.y += SWIMMER_SPEED
+                self.strokes += 1
+                self.stamina_float -= 1.0
+                self.stamina = int(self.stamina_float)  # Update integer version
+            # Wenn keine Ausdauer, passiert nichts
+        else:
+            # KI-Gegner haben unbegrenzte Ausdauer
+            self.y += SWIMMER_SPEED
+            self.strokes += 1
         
     def apply_current(self):
         """Wendet Gegenstrom an - schiebt zurück"""
@@ -55,6 +75,14 @@ class Swimmer:
         # Animation der Schwimmbewegung
         self.animation_timer += delta_time * 3  # Geschwindigkeit der Animation
         self.stroke_phase = (self.animation_timer % 2.0) / 2.0  # 0-1 Zyklus
+        
+        # Kontinuierliche Ausdauer-Erholung für Spieler
+        if self.is_player and self.stamina_float < MAX_STAMINA:
+            self.stamina_float += STAMINA_RECOVERY_RATE * delta_time
+            # Begrenze auf Maximum
+            if self.stamina_float > MAX_STAMINA:
+                self.stamina_float = MAX_STAMINA
+            self.stamina = int(self.stamina_float)  # Update integer version
         
         # Gegenstrom-Timer für alle Schwimmer
         self.current_timer += delta_time
@@ -216,17 +244,20 @@ class SwimmingGame(arcade.View):
         arcade.draw_text(f"Deine Schwimmzüge: {self.player.strokes}", 
                         10, SCREEN_HEIGHT - 30, arcade.color.WHITE, 18)
         
+        # Ausdauerbalken
+        self.draw_stamina_bar()
+        
         # Anweisungen
         arcade.draw_text("Drücke LEERTASTE zum Schwimmen", 
-                        10, SCREEN_HEIGHT - 55, arcade.color.WHITE, 14)
+                        10, SCREEN_HEIGHT - 80, arcade.color.WHITE, 14)
         
         # Bahn-Anzeige
         arcade.draw_text(f"Deine Bahn: {self.player.lane + 1}", 
-                        10, SCREEN_HEIGHT - 80, arcade.color.WHITE, 14)
+                        10, SCREEN_HEIGHT - 105, arcade.color.WHITE, 14)
         
         # Gegenstrom-Anzeige
         arcade.draw_text(f"Gegenstrom: alle {CURRENT_INTERVAL}s -{CURRENT_PUSHBACK}px", 
-                        10, SCREEN_HEIGHT - 105, arcade.color.CYAN, 14)
+                        10, SCREEN_HEIGHT - 130, arcade.color.CYAN, 14)
         
         # Rangliste anzeigen
         sorted_swimmers = sorted(self.swimmers, key=lambda s: s.y, reverse=True)
@@ -237,7 +268,45 @@ class SwimmingGame(arcade.View):
             else:
                 text = f"{i+1}. Gegner (Bahn {swimmer.lane+1})"
                 color = arcade.color.LIGHT_GRAY
-            arcade.draw_text(text, 10, SCREEN_HEIGHT - 145 - (i * 20), color, 12)
+            arcade.draw_text(text, 10, SCREEN_HEIGHT - 170 - (i * 20), color, 12)
+    
+    def draw_stamina_bar(self):
+        """Zeichnet den Ausdauerbalken"""
+        bar_x = 10
+        bar_y = SCREEN_HEIGHT - 55
+        bar_width = 200
+        bar_height = 20
+        
+        # Hintergrund-Rechteck (grau)
+        background_rect = arcade.XYWH(bar_x, bar_y - bar_height//2, bar_width, bar_height)
+        arcade.draw_rect_filled(background_rect, arcade.color.DARK_GRAY)
+        
+        # Rahmen (weiß)
+        arcade.draw_rect_outline(background_rect, arcade.color.WHITE, 2)
+        
+        # Ausdauer-Balken (grün bis rot je nach Level)
+        if self.player.stamina_float > 0:
+            stamina_percentage = self.player.stamina_float / MAX_STAMINA
+            stamina_width = (bar_width - 4) * stamina_percentage
+            
+            # Farbe basierend auf Ausdauer
+            if stamina_percentage > 0.6:
+                color = arcade.color.GREEN
+            elif stamina_percentage > 0.2:
+                color = arcade.color.YELLOW
+            else:
+                color = arcade.color.RED
+            
+            stamina_rect = arcade.XYWH(bar_x + 2, bar_y - bar_height//2 + 2, stamina_width, bar_height - 4)
+            arcade.draw_rect_filled(stamina_rect, color)
+        
+        # Ausdauer-Text (zeige Float-Wert für Präzision)
+        arcade.draw_text(f"Ausdauer: {self.player.stamina_float:.1f}/{MAX_STAMINA}", 
+                        bar_x, bar_y + 15, arcade.color.WHITE, 14)
+        
+        # Regenerations-Rate anzeigen
+        arcade.draw_text(f"(+{STAMINA_RECOVERY_RATE}/s)", 
+                        bar_x + 150, bar_y + 15, arcade.color.CYAN, 12)
     
     def on_key_press(self, key, modifiers):
         """Behandelt Tasteneingaben"""
