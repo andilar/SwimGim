@@ -491,7 +491,7 @@ class GameUI:
         """Zeichnet den Ausdauerbalken"""
         self._draw_stamina_background()
         self._draw_stamina_fill(player)
-        self._draw_stamina_texts()
+        # self._draw_stamina_texts()
     
     def _draw_stamina_background(self):
         """Zeichnet Hintergrund des Ausdauerbalkens"""
