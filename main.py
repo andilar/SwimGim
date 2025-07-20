@@ -1,143 +1,175 @@
+# main.py - Optimierte Hauptdatei mit Menü-System
 import arcade
-import arcade.gui
-
-# Konstanten
-SCREEN_WIDTH = 1000
-SCREEN_HEIGHT = 600
-SCREEN_TITLE = "Swimming Gim"
-
-# Farben
-WATER_COLOR = arcade.color.LIGHT_BLUE
-LANE_COLOR = arcade.color.DARK_BLUE
-SWIMMER_COLOR = arcade.color.RED
-BACKGROUND_COLOR = arcade.color.SKY_BLUE
-
-# Schwimmbahn-Einstellungen
-LANE_COUNT = 8
-LANE_HEIGHT = SCREEN_HEIGHT // LANE_COUNT
-LANE_WIDTH = SCREEN_WIDTH - 100
-
-# Schwimmer-Einstellungen
-SWIMMER_SIZE = 20
-SWIMMER_SPEED = 30  # Pixel pro Schwimmzug
-
-class Swimmer:
-    def __init__(self, x, y, lane):
-        self.x = x
-        self.y = y
-        self.lane = lane
-        self.strokes = 0  # Anzahl der Schwimmzüge
-        
-    def swim_stroke(self):
-        """Führt einen Schwimmzug aus"""
-        self.x += SWIMMER_SPEED
-        self.strokes += 1
-        
-    def draw(self):
-        """Zeichnet den Schwimmer"""
-        arcade.draw_circle_filled(self.x, self.y, SWIMMER_SIZE//2, SWIMMER_COLOR)
-        # Schwimmer-Details (Kopf und Körper)
-        arcade.draw_circle_filled(self.x, self.y, SWIMMER_SIZE//3, arcade.color.PINK)
+import time
+from config import *
+from swimmer import Swimmer
+from dangers import DangerManager
+from ui import GameUI, LaneRenderer
 
 class SwimmingGame(arcade.View):
+    """Hauptspiel-Klasse"""
+    
     def __init__(self):
         super().__init__()
         arcade.set_background_color(BACKGROUND_COLOR)
         
-        # Schwimmer initialisieren (startet in der 4. Bahn von links)
-        start_x = 50
-        start_lane = 3  # 4. Bahn von links (0-indexiert)
-        start_y = SCREEN_HEIGHT - (start_lane * LANE_HEIGHT) - LANE_HEIGHT // 2
+        # Komponenten initialisieren
+        self.swimmers = []
+        self.player = None
+        self.danger_manager = DangerManager()
+        self.ui = GameUI()
         
-        self.swimmer = Swimmer(start_x, start_y, start_lane)
+        # Spiel-Status
         self.game_finished = False
+        self.winner = None
+        self.start_time = time.time()
         
+        # Spiel initialisieren
+        self._initialize_swimmers()
+    
+    def _initialize_swimmers(self):
+        """Initialisiert alle Schwimmer"""
+        self.swimmers = []
+        
+        # Spieler in der 4. Bahn von links
+        player_lane = 3
+        player_x = player_lane * LANE_WIDTH + LANE_WIDTH // 2
+        player_y = 50
+        self.player = Swimmer(player_x, player_y, player_lane, is_player=True)
+        self.swimmers.append(self.player)
+        
+        # KI-Gegner in den anderen Bahnen
+        for lane in range(LANE_COUNT):
+            if lane != player_lane:
+                opponent_x = lane * LANE_WIDTH + LANE_WIDTH // 2
+                opponent_y = 50
+                opponent = Swimmer(opponent_x, opponent_y, lane, is_player=False)
+                self.swimmers.append(opponent)
+    
+    def on_update(self, delta_time):
+        """Update-Methode für Spiellogik"""
+        if not self.game_finished:
+            self._update_swimmers(delta_time)
+            
+            # Prüfe Game-Over-Bedingungen
+            if self._check_game_conditions():
+                self._handle_game_over()
+            
+            self.danger_manager.update(delta_time, self.swimmers)
+        
+        # UI immer updaten
+        self.ui.update_texts(self.player, self.game_finished, self.winner)
+    
+    def _update_swimmers(self, delta_time):
+        """Update aller Schwimmer"""
+        for swimmer in self.swimmers:
+            swimmer.update(delta_time)
+    
+    def _check_game_conditions(self):
+        """Prüft Gewinn-/Verlust-Bedingungen"""
+        # Zielbereich erreicht
+        for swimmer in self.swimmers:
+            if swimmer.y >= SCREEN_HEIGHT - 70:
+                self.game_finished = True
+                self.winner = swimmer
+                return True
+        
+        # Spieler gefressen
+        if not self.player.active:
+            self.game_finished = True
+            self.winner = None
+            return True
+        
+        return False
+    
+    def _handle_game_over(self):
+        """Behandelt Game-Over"""
+        # Berechne Statistiken
+        survived_time = time.time() - self.start_time
+        
+        # Wechsel zum Game-Over-Bildschirm nach kurzer Verzögerung
+        def show_game_over():
+            from menu import GameOverView
+            game_over_view = GameOverView(
+                self.winner, 
+                self.player.strokes, 
+                survived_time
+            )
+            self.window.show_view(game_over_view)
+        
+        # Verzögerung für dramatischen Effekt
+        arcade.schedule(show_game_over, 2.0)
+    
     def on_draw(self):
-        """Zeichnet das Spiel"""
+        """Zeichnet das komplette Spiel"""
         self.clear()
         
-        # Schwimmbahnen zeichnen
-        self.draw_lanes()
+        # Spielfeld zeichnen
+        LaneRenderer.draw_lanes()
+        self.ui.draw_lane_numbers()
         
-        # Schwimmer zeichnen
-        self.swimmer.draw()
+        # Spielelemente zeichnen
+        self._draw_swimmers()
+        self.danger_manager.draw_all()
         
-        # UI-Informationen zeichnen
-        self.draw_ui()
+        # UI zeichnen
+        self.ui.draw_stamina_bar(self.player)
         
-        # Gewinn-Nachricht anzeigen
+        # Game-Over-Text nur wenn Spiel beendet (vor automatischem Wechsel)
         if self.game_finished:
-            arcade.draw_text("Ziel erreicht! Drücke R zum Neustarten", 
-                           SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2,
-                           arcade.color.RED, 30, anchor_x="center")
+            self.ui.draw_game_over(self.game_finished, self.winner)
     
-    def draw_lanes(self):
-        """Zeichnet die 8 Schwimmbahnen"""
-        # Wasser-Hintergrund
-        water_rect = arcade.XYWH(50, 0, LANE_WIDTH, SCREEN_HEIGHT)
-        arcade.draw_rect_filled(water_rect, WATER_COLOR)
-        
-        # Bahnlinien zeichnen
-        for i in range(LANE_COUNT + 1):
-            y = i * LANE_HEIGHT
-            arcade.draw_line(50, y, SCREEN_WIDTH - 50, y, LANE_COLOR, 3)
-        
-        # Seitliche Begrenzungen
-        arcade.draw_line(50, 0, 50, SCREEN_HEIGHT, LANE_COLOR, 5)
-        arcade.draw_line(SCREEN_WIDTH - 50, 0, SCREEN_WIDTH - 50, SCREEN_HEIGHT, LANE_COLOR, 5)
-        
-        # Zielbereich markieren
-        goal_x = SCREEN_WIDTH - 70
-        arcade.draw_line(goal_x, 0, goal_x, SCREEN_HEIGHT, arcade.color.YELLOW, 4)
-        
-        # Bahnnummern
-        for i in range(LANE_COUNT):
-            y = SCREEN_HEIGHT - (i * LANE_HEIGHT) - LANE_HEIGHT // 2
-            arcade.draw_text(f"{i+1}", 25, y - 10, arcade.color.WHITE, 16)
-    
-    def draw_ui(self):
-        """Zeichnet die Benutzeroberfläche"""
-        # Schwimmzug-Zähler
-        arcade.draw_text(f"Schwimmzüge: {self.swimmer.strokes}", 
-                        10, SCREEN_HEIGHT - 30, arcade.color.WHITE, 18)
-        
-        # Anweisungen
-        arcade.draw_text("Drücke LEERTASTE zum Schwimmen", 
-                        10, SCREEN_HEIGHT - 55, arcade.color.WHITE, 14)
-        
-        # Bahn-Anzeige
-        arcade.draw_text(f"Bahn: {self.swimmer.lane + 1}", 
-                        10, SCREEN_HEIGHT - 80, arcade.color.WHITE, 14)
+    def _draw_swimmers(self):
+        """Zeichnet alle Schwimmer"""
+        for swimmer in self.swimmers:
+            swimmer.draw()
     
     def on_key_press(self, key, modifiers):
         """Behandelt Tasteneingaben"""
         if key == arcade.key.SPACE and not self.game_finished:
-            # Schwimmzug ausführen
-            self.swimmer.swim_stroke()
-            
-            # Prüfen ob Ziel erreicht
-            if self.swimmer.x >= SCREEN_WIDTH - 70:
-                self.game_finished = True
-                
+            self.player.swim_stroke()
         elif key == arcade.key.R and self.game_finished:
-            # Spiel neustarten
             self.restart_game()
+        elif key == arcade.key.P and not self.game_finished:
+            # Pause
+            from menu import PauseView
+            pause_view = PauseView(self)
+            self.window.show_view(pause_view)
+        elif key == arcade.key.ESCAPE:
+            # Zurück zum Hauptmenü
+            from menu import MenuView
+            menu_view = MenuView()
+            self.window.show_view(menu_view)
     
     def restart_game(self):
         """Startet das Spiel neu"""
-        start_x = 50
-        start_lane = 3  # 4. Bahn von links
-        start_y = SCREEN_HEIGHT - (start_lane * LANE_HEIGHT) - LANE_HEIGHT // 2
-        
-        self.swimmer = Swimmer(start_x, start_y, start_lane)
+        self._initialize_swimmers()
+        self.danger_manager.reset()
         self.game_finished = False
+        self.winner = None
+        self.start_time = time.time()
+
+class GameManager:
+    """Manager für das gesamte Spiel"""
+    
+    def __init__(self):
+        self.window = None
+    
+    def start_game(self):
+        """Startet das Spiel mit Hauptmenü"""
+        self.window = arcade.Window(SCREEN_WIDTH, SCREEN_HEIGHT, SCREEN_TITLE)
+        
+        # Starte mit dem Hauptmenü
+        from menu import MenuView
+        menu_view = MenuView()
+        self.window.show_view(menu_view)
+        
+        arcade.run()
 
 def main():
     """Hauptfunktion"""
-    window = arcade.Window(SCREEN_WIDTH, SCREEN_HEIGHT, SCREEN_TITLE)
-    game_view = SwimmingGame()
-    window.show_view(game_view)
-    arcade.run()
+    game_manager = GameManager()
+    game_manager.start_game()
 
 if __name__ == "__main__":
     main()
