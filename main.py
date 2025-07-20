@@ -22,7 +22,8 @@ LANE_HEIGHT = SCREEN_HEIGHT - 100
 # Schwimmer-Einstellungen
 SWIMMER_SIZE = 20
 SWIMMER_SPEED = 30  # Pixel pro Schwimmzug
-CURRENT_STRENGTH = 8  # Stärke des Gegenstroms (Pixel pro Sekunde)
+CURRENT_INTERVAL = 1.0  # Sekunden zwischen Gegenstrom-Schüben
+CURRENT_PUSHBACK = 15  # Halbe Schwimmzuglänge (SWIMMER_SPEED / 2)
 
 class Swimmer:
     def __init__(self, x, y, lane, is_player=True):
@@ -33,20 +34,33 @@ class Swimmer:
         self.is_player = is_player
         self.swim_timer = 0  # Timer für automatisches Schwimmen
         self.swim_speed = random.uniform(0.8, 1.2) if not is_player else 1.0  # Verschiedene Geschwindigkeiten
+        self.current_timer = 0  # Timer für Gegenstrom
+        self.animation_timer = 0  # Timer für Schwimmanimation
+        self.stroke_phase = 0  # Phase der Schwimmbewegung (0-1)
         
     def swim_stroke(self):
         """Führt einen Schwimmzug aus"""
         self.y += SWIMMER_SPEED
         self.strokes += 1
         
-    def update(self, delta_time):
-        """Update für KI-Schwimmer"""
-        # Gegenstrom schiebt alle Schwimmer zurück (nach unten zum Start)
-        self.y -= CURRENT_STRENGTH * delta_time
-        
+    def apply_current(self):
+        """Wendet Gegenstrom an - schiebt zurück"""
+        self.y -= CURRENT_PUSHBACK
         # Schwimmer kann nicht unter die Startlinie fallen
         if self.y < 50:
             self.y = 50
+        
+    def update(self, delta_time):
+        """Update für KI-Schwimmer"""
+        # Animation der Schwimmbewegung
+        self.animation_timer += delta_time * 3  # Geschwindigkeit der Animation
+        self.stroke_phase = (self.animation_timer % 2.0) / 2.0  # 0-1 Zyklus
+        
+        # Gegenstrom-Timer für alle Schwimmer
+        self.current_timer += delta_time
+        if self.current_timer >= CURRENT_INTERVAL:
+            self.apply_current()
+            self.current_timer = 0
         
         if not self.is_player and self.y < SCREEN_HEIGHT - 70:
             self.swim_timer += delta_time
@@ -56,12 +70,55 @@ class Swimmer:
                 self.swim_timer = 0
         
     def draw(self):
-        """Zeichnet den Schwimmer"""
+        """Zeichnet den Schwimmer mit animierten Armen und Beinen"""
         color = SWIMMER_COLOR if self.is_player else OPPONENT_COLOR
-        arcade.draw_circle_filled(self.x, self.y, SWIMMER_SIZE//2, color)
-        # Schwimmer-Details (Kopf)
         head_color = arcade.color.PINK if self.is_player else arcade.color.LIGHT_GRAY
-        arcade.draw_circle_filled(self.x, self.y, SWIMMER_SIZE//3, head_color)
+        
+        # Körper (Oval)
+        arcade.draw_ellipse_filled(self.x, self.y, SWIMMER_SIZE, SWIMMER_SIZE//2, color)
+        
+        # Kopf
+        arcade.draw_circle_filled(self.x, self.y + 5, SWIMMER_SIZE//4, head_color)
+        
+        # Berechne Arm-Positionen basierend auf Animation
+        import math
+        
+        # Linker Arm (wechselt zwischen vor und zurück)
+        left_arm_angle = math.sin(self.stroke_phase * math.pi * 2) * 0.8
+        left_arm_x = self.x - 8 + math.cos(left_arm_angle) * 10
+        left_arm_y = self.y + math.sin(left_arm_angle) * 5
+        
+        # Rechter Arm (um 180° phasenverschoben)
+        right_arm_angle = math.sin((self.stroke_phase + 0.5) * math.pi * 2) * 0.8
+        right_arm_x = self.x + 8 + math.cos(right_arm_angle) * 10
+        right_arm_y = self.y + math.sin(right_arm_angle) * 5
+        
+        # Arme zeichnen
+        arcade.draw_line(self.x - 5, self.y, left_arm_x, left_arm_y, color, 3)
+        arcade.draw_line(self.x + 5, self.y, right_arm_x, right_arm_y, color, 3)
+        
+        # Hände
+        arcade.draw_circle_filled(left_arm_x, left_arm_y, 2, color)
+        arcade.draw_circle_filled(right_arm_x, right_arm_y, 2, color)
+        
+        # Beine (alternierend kickend)
+        leg_kick = math.sin(self.stroke_phase * math.pi * 4) * 0.3  # Schnellere Beinbewegung
+        
+        # Linkes Bein
+        left_leg_x = self.x - 3 + math.cos(leg_kick) * 6
+        left_leg_y = self.y - 8 + math.sin(leg_kick) * 3
+        
+        # Rechtes Bein (phasenverschoben)
+        right_leg_x = self.x + 3 + math.cos(leg_kick + math.pi) * 6
+        right_leg_y = self.y - 8 + math.sin(leg_kick + math.pi) * 3
+        
+        # Beine zeichnen
+        arcade.draw_line(self.x - 3, self.y - 5, left_leg_x, left_leg_y, color, 3)
+        arcade.draw_line(self.x + 3, self.y - 5, right_leg_x, right_leg_y, color, 3)
+        
+        # Füße
+        arcade.draw_circle_filled(left_leg_x, left_leg_y, 2, color)
+        arcade.draw_circle_filled(right_leg_x, right_leg_y, 2, color)
 
 class SwimmingGame(arcade.View):
     def __init__(self):
@@ -135,18 +192,6 @@ class SwimmingGame(arcade.View):
         water_rect = arcade.XYWH(0, 50, SCREEN_WIDTH, LANE_HEIGHT)
         arcade.draw_rect_filled(water_rect, WATER_COLOR)
         
-        # Gegenstrom-Effekt visualisieren (Pfeile nach unten)
-        import time
-        offset = int(time.time() * 100) % 40  # Animierte Verschiebung
-        for x in range(20, SCREEN_WIDTH, 40):
-            for y in range(70, SCREEN_HEIGHT - 50, 60):
-                arrow_y = y + offset
-                if 60 < arrow_y < SCREEN_HEIGHT - 60:
-                    # Pfeil nach unten zeichnen
-                    arcade.draw_line(x, arrow_y, x, arrow_y - 15, arcade.color.DARK_BLUE, 2)
-                    arcade.draw_line(x, arrow_y - 15, x - 5, arrow_y - 10, arcade.color.DARK_BLUE, 2)
-                    arcade.draw_line(x, arrow_y - 15, x + 5, arrow_y - 10, arcade.color.DARK_BLUE, 2)
-        
         # Bahnlinien zeichnen (vertikal)
         for i in range(LANE_COUNT + 1):
             x = i * LANE_WIDTH
@@ -180,7 +225,7 @@ class SwimmingGame(arcade.View):
                         10, SCREEN_HEIGHT - 80, arcade.color.WHITE, 14)
         
         # Gegenstrom-Anzeige
-        arcade.draw_text(f"Gegenstrom: {CURRENT_STRENGTH} px/s", 
+        arcade.draw_text(f"Gegenstrom: alle {CURRENT_INTERVAL}s -{CURRENT_PUSHBACK}px", 
                         10, SCREEN_HEIGHT - 105, arcade.color.CYAN, 14)
         
         # Rangliste anzeigen
