@@ -79,8 +79,8 @@ class Swimmer:
         
     def update(self, delta_time):
         """Update für KI-Schwimmer"""
-        # Animation der Schwimmbewegung
-        self.animation_timer += delta_time * 3  # Geschwindigkeit der Animation
+        # Animation der Schwimmbewegung (langsamer)
+        self.animation_timer += delta_time * 1.5  # Langsamere Animation (war 3)
         self.stroke_phase = (self.animation_timer % 2.0) / 2.0  # 0-1 Zyklus
         
         # Kontinuierliche Ausdauer-Erholung für Spieler
@@ -119,22 +119,44 @@ class Swimmer:
         # Kopf
         arcade.draw_circle_filled(self.x, self.y + 5, SWIMMER_SIZE//4, head_color)
         
-        # Berechne Arm-Positionen basierend auf Animation
+        # Berechne Arm-Positionen für realistische Kraul-Schwimmbewegung (kürzere Arme)
         import math
         
-        # Linker Arm (wechselt zwischen vor und zurück)
-        left_arm_angle = math.sin(self.stroke_phase * math.pi * 2) * 0.8
-        left_arm_x = self.x - 8 + math.cos(left_arm_angle) * 10
-        left_arm_y = self.y + math.sin(left_arm_angle) * 5
+        # Linker Arm - Kraul-Bewegung (kürzer und ruhiger)
+        left_phase = self.stroke_phase * math.pi * 2
+        # Arm geht nach vorne (über Wasser) und dann nach unten ins Wasser
+        if math.sin(left_phase) > 0:  # Über Wasser Phase
+            left_arm_x = self.x - 3 + math.cos(left_phase) * 8  # Kürzer (war 12)
+            left_arm_y = self.y + 2 + math.sin(left_phase) * 5  # Weniger hoch (war 8)
+        else:  # Unter Wasser Phase
+            left_arm_x = self.x - 3 + math.cos(left_phase) * 6  # Kürzer (war 8)
+            left_arm_y = self.y - 1 + math.sin(left_phase) * 3  # Weniger tief (war 4)
         
-        # Rechter Arm (um 180° phasenverschoben)
-        right_arm_angle = math.sin((self.stroke_phase + 0.5) * math.pi * 2) * 0.8
-        right_arm_x = self.x + 8 + math.cos(right_arm_angle) * 10
-        right_arm_y = self.y + math.sin(right_arm_angle) * 5
+        # Rechter Arm - exakt entgegengesetzt (180° verschoben)
+        right_phase = (self.stroke_phase + 0.5) * math.pi * 2
+        if math.sin(right_phase) > 0:  # Über Wasser Phase
+            right_arm_x = self.x + 3 + math.cos(right_phase) * 8  # Kürzer
+            right_arm_y = self.y + 2 + math.sin(right_phase) * 5  # Weniger hoch
+        else:  # Unter Wasser Phase
+            right_arm_x = self.x + 3 + math.cos(right_phase) * 6  # Kürzer
+            right_arm_y = self.y - 1 + math.sin(right_phase) * 3  # Weniger tief
         
-        # Arme zeichnen
-        arcade.draw_line(self.x - 5, self.y, left_arm_x, left_arm_y, color, 3)
-        arcade.draw_line(self.x + 5, self.y, right_arm_x, right_arm_y, color, 3)
+        # Arme zeichnen mit unterschiedlichen Farben je nach Phase
+        # Linker Arm
+        left_phase = self.stroke_phase * math.pi * 2
+        if math.sin(left_phase) > 0:  # Über Wasser - heller
+            left_arm_color = color
+        else:  # Unter Wasser - dunkler
+            left_arm_color = tuple(max(0, c - 50) for c in color[:3]) + (color[3] if len(color) > 3 else 255,)
+        arcade.draw_line(self.x - 3, self.y, left_arm_x, left_arm_y, left_arm_color, 3)
+        
+        # Rechter Arm
+        right_phase = (self.stroke_phase + 0.5) * math.pi * 2
+        if math.sin(right_phase) > 0:  # Über Wasser - heller
+            right_arm_color = color
+        else:  # Unter Wasser - dunkler
+            right_arm_color = tuple(max(0, c - 50) for c in color[:3]) + (color[3] if len(color) > 3 else 255,)
+        arcade.draw_line(self.x + 3, self.y, right_arm_x, right_arm_y, right_arm_color, 3)
         
         # Hände
         arcade.draw_circle_filled(left_arm_x, left_arm_y, 2, color)
@@ -357,10 +379,6 @@ class SwimmingGame(arcade.View):
         # Prüfe ob Text-Objekte existieren
         if not hasattr(self, 'stamina_text'):
             return
-            
-        # Ausdauer-Texte
-        self.stamina_text.text = f"Ausdauer: {self.player.stamina_float:.1f}/{MAX_STAMINA}"
-        self.regen_text.text = f"Regeneration: +{STAMINA_RECOVERY_RATE}/s"
         
         # Gewinn-Texte
         if self.game_finished:
@@ -509,22 +527,8 @@ class SwimmingGame(arcade.View):
             else:
                 color = arcade.color.RED
             
-            stamina_rect = arcade.XYWH(bar_x + 3, bar_y - bar_height//2 + 3, stamina_width, bar_height - 6)
+            stamina_rect = arcade.XYWH(bar_x + 3, bar_y - bar_height//2, stamina_width, bar_height - 4)
             arcade.draw_rect_filled(stamina_rect, color)
-        
-        # Ausdauer-Text über dem Balken - mit Text-Objekt (falls vorhanden)
-        if hasattr(self, 'stamina_text'):
-            self.stamina_text.draw()
-        else:
-            arcade.draw_text(f"Ausdauer: {self.player.stamina_float:.1f}/{MAX_STAMINA}", 
-                            bar_x, bar_y + 18, arcade.color.WHITE, 16)
-        
-        # Regenerations-Rate unter dem Balken - mit Text-Objekt (falls vorhanden)
-        if hasattr(self, 'regen_text'):
-            self.regen_text.draw()
-        else:
-            arcade.draw_text(f"Regeneration: +{STAMINA_RECOVERY_RATE}/s", 
-                            bar_x, bar_y - 22, arcade.color.CYAN, 14)
     
     def on_key_press(self, key, modifiers):
         """Behandelt Tasteneingaben"""
