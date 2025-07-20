@@ -240,73 +240,50 @@ class SwimmingGame(arcade.View):
     
     def draw_ui(self):
         """Zeichnet die Benutzeroberfläche"""
-        # Schwimmzug-Zähler
-        arcade.draw_text(f"Deine Schwimmzüge: {self.player.strokes}", 
-                        10, SCREEN_HEIGHT - 30, arcade.color.WHITE, 18)
-        
-        # Ausdauerbalken
+        # Nur noch der Ausdauerbalken
         self.draw_stamina_bar()
-        
-        # Anweisungen
-        arcade.draw_text("Drücke LEERTASTE zum Schwimmen", 
-                        10, SCREEN_HEIGHT - 80, arcade.color.WHITE, 14)
-        
-        # Bahn-Anzeige
-        arcade.draw_text(f"Deine Bahn: {self.player.lane + 1}", 
-                        10, SCREEN_HEIGHT - 105, arcade.color.WHITE, 14)
-        
-        # Gegenstrom-Anzeige
-        arcade.draw_text(f"Gegenstrom: alle {CURRENT_INTERVAL}s -{CURRENT_PUSHBACK}px", 
-                        10, SCREEN_HEIGHT - 130, arcade.color.CYAN, 14)
-        
-        # Rangliste anzeigen
-        sorted_swimmers = sorted(self.swimmers, key=lambda s: s.y, reverse=True)
-        for i, swimmer in enumerate(sorted_swimmers):
-            if swimmer.is_player:
-                text = f"{i+1}. Du (Bahn {swimmer.lane+1})"
-                color = arcade.color.YELLOW
-            else:
-                text = f"{i+1}. Gegner (Bahn {swimmer.lane+1})"
-                color = arcade.color.LIGHT_GRAY
-            arcade.draw_text(text, 10, SCREEN_HEIGHT - 170 - (i * 20), color, 12)
     
     def draw_stamina_bar(self):
         """Zeichnet den Ausdauerbalken"""
         bar_x = 10
-        bar_y = SCREEN_HEIGHT - 55
-        bar_width = 200
-        bar_height = 20
+        bar_y = SCREEN_HEIGHT - 65  # Mehr Abstand vom oberen Text
+        bar_width = 250  # Breiterer Balken
+        bar_height = 25  # Höherer Balken
         
-        # Hintergrund-Rechteck (grau)
+        # Schwarzer Hintergrund für bessere Lesbarkeit
+        shadow_rect = arcade.XYWH(bar_x - 2, bar_y - bar_height//2 - 2, bar_width + 4, bar_height + 4)
+        arcade.draw_rect_filled(shadow_rect, arcade.color.BLACK)
+        
+        # Hintergrund-Rechteck (dunkelgrau)
         background_rect = arcade.XYWH(bar_x, bar_y - bar_height//2, bar_width, bar_height)
         arcade.draw_rect_filled(background_rect, arcade.color.DARK_GRAY)
         
-        # Rahmen (weiß)
-        arcade.draw_rect_outline(background_rect, arcade.color.WHITE, 2)
+        # Rahmen (weiß, dicker)
+        arcade.draw_rect_outline(background_rect, arcade.color.WHITE, 3)
         
         # Ausdauer-Balken (grün bis rot je nach Level)
         if self.player.stamina_float > 0:
             stamina_percentage = self.player.stamina_float / MAX_STAMINA
-            stamina_width = (bar_width - 4) * stamina_percentage
+            stamina_width = (bar_width - 6) * stamina_percentage
             
             # Farbe basierend auf Ausdauer
             if stamina_percentage > 0.6:
                 color = arcade.color.GREEN
             elif stamina_percentage > 0.2:
-                color = arcade.color.YELLOW
+                color = arcade.color.ORANGE  # Besser sichtbar als Gelb
             else:
                 color = arcade.color.RED
             
-            stamina_rect = arcade.XYWH(bar_x + 2, bar_y - bar_height//2 + 2, stamina_width, bar_height - 4)
+            stamina_rect = arcade.XYWH(bar_x + 3, bar_y - bar_height//2 + 3, stamina_width, bar_height - 6)
             arcade.draw_rect_filled(stamina_rect, color)
         
-        # Ausdauer-Text (zeige Float-Wert für Präzision)
+        # Ausdauer-Text über dem Balken
         arcade.draw_text(f"Ausdauer: {self.player.stamina_float:.1f}/{MAX_STAMINA}", 
-                        bar_x, bar_y + 15, arcade.color.WHITE, 14)
+                        bar_x, bar_y + 18, arcade.color.WHITE, 16)
         
-        # Regenerations-Rate anzeigen
-        arcade.draw_text(f"(+{STAMINA_RECOVERY_RATE}/s)", 
-                        bar_x + 150, bar_y + 15, arcade.color.CYAN, 12)
+        # Regenerations-Rate unter dem Balken
+        arcade.draw_text(f"Regeneration: +{STAMINA_RECOVERY_RATE}/s", 
+                        bar_x, bar_y - 22, arcade.color.CYAN, 14)
     
     def on_key_press(self, key, modifiers):
         """Behandelt Tasteneingaben"""
@@ -350,4 +327,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    
