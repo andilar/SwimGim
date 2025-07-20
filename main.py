@@ -1,5 +1,6 @@
-# main.py - Optimierte Hauptdatei
+# main.py - Optimierte Hauptdatei mit Menü-System
 import arcade
+import time
 from config import *
 from swimmer import Swimmer
 from dangers import DangerManager
@@ -21,6 +22,7 @@ class SwimmingGame(arcade.View):
         # Spiel-Status
         self.game_finished = False
         self.winner = None
+        self.start_time = time.time()
         
         # Spiel initialisieren
         self._initialize_swimmers()
@@ -48,7 +50,11 @@ class SwimmingGame(arcade.View):
         """Update-Methode für Spiellogik"""
         if not self.game_finished:
             self._update_swimmers(delta_time)
-            self._check_game_conditions()
+            
+            # Prüfe Game-Over-Bedingungen
+            if self._check_game_conditions():
+                self._handle_game_over()
+            
             self.danger_manager.update(delta_time, self.swimmers)
         
         # UI immer updaten
@@ -66,12 +72,33 @@ class SwimmingGame(arcade.View):
             if swimmer.y >= SCREEN_HEIGHT - 70:
                 self.game_finished = True
                 self.winner = swimmer
-                return
+                return True
         
         # Spieler gefressen
         if not self.player.active:
             self.game_finished = True
             self.winner = None
+            return True
+        
+        return False
+    
+    def _handle_game_over(self):
+        """Behandelt Game-Over"""
+        # Berechne Statistiken
+        survived_time = time.time() - self.start_time
+        
+        # Wechsel zum Game-Over-Bildschirm nach kurzer Verzögerung
+        def show_game_over():
+            from menu import GameOverView
+            game_over_view = GameOverView(
+                self.winner, 
+                self.player.strokes, 
+                survived_time
+            )
+            self.window.show_view(game_over_view)
+        
+        # Verzögerung für dramatischen Effekt
+        arcade.schedule(show_game_over, 2.0)
     
     def on_draw(self):
         """Zeichnet das komplette Spiel"""
@@ -87,7 +114,10 @@ class SwimmingGame(arcade.View):
         
         # UI zeichnen
         self.ui.draw_stamina_bar(self.player)
-        self.ui.draw_game_over(self.game_finished, self.winner)
+        
+        # Game-Over-Text nur wenn Spiel beendet (vor automatischem Wechsel)
+        if self.game_finished:
+            self.ui.draw_game_over(self.game_finished, self.winner)
     
     def _draw_swimmers(self):
         """Zeichnet alle Schwimmer"""
@@ -100,6 +130,16 @@ class SwimmingGame(arcade.View):
             self.player.swim_stroke()
         elif key == arcade.key.R and self.game_finished:
             self.restart_game()
+        elif key == arcade.key.P and not self.game_finished:
+            # Pause
+            from menu import PauseView
+            pause_view = PauseView(self)
+            self.window.show_view(pause_view)
+        elif key == arcade.key.ESCAPE:
+            # Zurück zum Hauptmenü
+            from menu import MenuView
+            menu_view = MenuView()
+            self.window.show_view(menu_view)
     
     def restart_game(self):
         """Startet das Spiel neu"""
@@ -107,19 +147,23 @@ class SwimmingGame(arcade.View):
         self.danger_manager.reset()
         self.game_finished = False
         self.winner = None
+        self.start_time = time.time()
 
 class GameManager:
     """Manager für das gesamte Spiel"""
     
     def __init__(self):
         self.window = None
-        self.game_view = None
     
     def start_game(self):
-        """Startet das Spiel"""
+        """Startet das Spiel mit Hauptmenü"""
         self.window = arcade.Window(SCREEN_WIDTH, SCREEN_HEIGHT, SCREEN_TITLE)
-        self.game_view = SwimmingGame()
-        self.window.show_view(self.game_view)
+        
+        # Starte mit dem Hauptmenü
+        from menu import MenuView
+        menu_view = MenuView()
+        self.window.show_view(menu_view)
+        
         arcade.run()
 
 def main():
