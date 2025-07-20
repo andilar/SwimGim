@@ -22,6 +22,7 @@ LANE_HEIGHT = SCREEN_HEIGHT - 100
 # Schwimmer-Einstellungen
 SWIMMER_SIZE = 20
 SWIMMER_SPEED = 30  # Pixel pro Schwimmzug
+CURRENT_STRENGTH = 8  # Stärke des Gegenstroms (Pixel pro Sekunde)
 
 class Swimmer:
     def __init__(self, x, y, lane, is_player=True):
@@ -40,6 +41,13 @@ class Swimmer:
         
     def update(self, delta_time):
         """Update für KI-Schwimmer"""
+        # Gegenstrom schiebt alle Schwimmer zurück (nach unten zum Start)
+        self.y -= CURRENT_STRENGTH * delta_time
+        
+        # Schwimmer kann nicht unter die Startlinie fallen
+        if self.y < 50:
+            self.y = 50
+        
         if not self.is_player and self.y < SCREEN_HEIGHT - 70:
             self.swim_timer += delta_time
             # Gegner schwimmen automatisch mit unterschiedlichen Geschwindigkeiten
@@ -127,6 +135,18 @@ class SwimmingGame(arcade.View):
         water_rect = arcade.XYWH(0, 50, SCREEN_WIDTH, LANE_HEIGHT)
         arcade.draw_rect_filled(water_rect, WATER_COLOR)
         
+        # Gegenstrom-Effekt visualisieren (Pfeile nach unten)
+        import time
+        offset = int(time.time() * 100) % 40  # Animierte Verschiebung
+        for x in range(20, SCREEN_WIDTH, 40):
+            for y in range(70, SCREEN_HEIGHT - 50, 60):
+                arrow_y = y + offset
+                if 60 < arrow_y < SCREEN_HEIGHT - 60:
+                    # Pfeil nach unten zeichnen
+                    arcade.draw_line(x, arrow_y, x, arrow_y - 15, arcade.color.DARK_BLUE, 2)
+                    arcade.draw_line(x, arrow_y - 15, x - 5, arrow_y - 10, arcade.color.DARK_BLUE, 2)
+                    arcade.draw_line(x, arrow_y - 15, x + 5, arrow_y - 10, arcade.color.DARK_BLUE, 2)
+        
         # Bahnlinien zeichnen (vertikal)
         for i in range(LANE_COUNT + 1):
             x = i * LANE_WIDTH
@@ -159,6 +179,10 @@ class SwimmingGame(arcade.View):
         arcade.draw_text(f"Deine Bahn: {self.player.lane + 1}", 
                         10, SCREEN_HEIGHT - 80, arcade.color.WHITE, 14)
         
+        # Gegenstrom-Anzeige
+        arcade.draw_text(f"Gegenstrom: {CURRENT_STRENGTH} px/s", 
+                        10, SCREEN_HEIGHT - 105, arcade.color.CYAN, 14)
+        
         # Rangliste anzeigen
         sorted_swimmers = sorted(self.swimmers, key=lambda s: s.y, reverse=True)
         for i, swimmer in enumerate(sorted_swimmers):
@@ -168,7 +192,7 @@ class SwimmingGame(arcade.View):
             else:
                 text = f"{i+1}. Gegner (Bahn {swimmer.lane+1})"
                 color = arcade.color.LIGHT_GRAY
-            arcade.draw_text(text, 10, SCREEN_HEIGHT - 120 - (i * 20), color, 12)
+            arcade.draw_text(text, 10, SCREEN_HEIGHT - 145 - (i * 20), color, 12)
     
     def on_key_press(self, key, modifiers):
         """Behandelt Tasteneingaben"""
