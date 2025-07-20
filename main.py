@@ -29,6 +29,12 @@ CURRENT_PUSHBACK = 15  # Halbe Schwimmzuglänge (SWIMMER_SPEED / 2)
 MAX_STAMINA = 5  # Maximale Ausdauer (Schwimmzüge)
 STAMINA_RECOVERY_RATE = 1.5  # Ausdauer-Punkte pro Sekunde
 
+# Gefahren-Einstellungen
+SHARK_SPEED = 80  # Hai-Geschwindigkeit (Pixel pro Sekunde)
+SHARK_SPAWN_MIN = 5.0  # Minimum Sekunden zwischen Hai-Spawns
+SHARK_SPAWN_MAX = 15.0  # Maximum Sekunden zwischen Hai-Spawns
+SHARK_SIZE = 30  # Größe des Hais
+
 class Swimmer:
     def __init__(self, x, y, lane, is_player=True):
         self.x = x
@@ -148,6 +154,136 @@ class Swimmer:
         arcade.draw_circle_filled(left_leg_x, left_leg_y, 2, color)
         arcade.draw_circle_filled(right_leg_x, right_leg_y, 2, color)
 
+class Danger:
+    """Basisklasse für alle Gefahren"""
+    def __init__(self, x, y):
+        self.x = x
+        self.y = y
+        self.active = True
+        
+    def update(self, delta_time, swimmers):
+        """Update-Methode für Gefahren"""
+        pass
+        
+    def draw(self):
+        """Zeichnet die Gefahr"""
+        pass
+
+class Shark(Danger):
+    """Hai-Klasse - schwimmt von der Seite rein und verfolgt Schwimmer"""
+    def __init__(self, target_swimmer):
+        # Starte von einer zufälligen Seite
+        from_left = random.choice([True, False])
+        start_x = -SHARK_SIZE if from_left else SCREEN_WIDTH + SHARK_SIZE
+        start_y = target_swimmer.y
+        
+        super().__init__(start_x, start_y)
+        self.target = target_swimmer
+        self.from_left = from_left
+        self.has_caught = False
+        self.is_diving = False
+        self.dive_timer = 0
+        self.dive_duration = 2.0  # Sekunden zum Abtauchen
+        
+    def update(self, delta_time, swimmers):
+        """Hai bewegt sich auf Ziel zu oder taucht ab"""
+        if not self.active:
+            return
+            
+        if self.is_diving:
+            # Hai taucht ab
+            self.dive_timer += delta_time
+            self.y -= 100 * delta_time  # Taucht nach unten ab
+            
+            # Entferne Hai nach Abtauch-Zeit oder wenn er unten ist
+            if self.dive_timer >= self.dive_duration or self.y < 30:
+                self.active = False
+            return
+            
+        if self.has_caught:
+            return
+            
+        # Normale Hai-Bewegung
+        if self.from_left:
+            self.x += SHARK_SPEED * delta_time
+        else:
+            self.x -= SHARK_SPEED * delta_time
+            
+        # Verfolge den Schwimmer auch vertikal (langsamer)
+        if self.target.y > self.y:
+            self.y += SHARK_SPEED * 0.3 * delta_time
+        elif self.target.y < self.y:
+            self.y -= SHARK_SPEED * 0.3 * delta_time
+            
+        # Prüfe Kollision mit Ziel-Schwimmer
+        distance = ((self.x - self.target.x) ** 2 + (self.y - self.target.y) ** 2) ** 0.5
+        if distance < SHARK_SIZE and not self.has_caught:
+            self.catch_swimmer()
+            
+        # Entferne Hai wenn er den Bildschirm verlassen hat (ohne zu fangen)
+        if (self.from_left and self.x > SCREEN_WIDTH + SHARK_SIZE) or \
+           (not self.from_left and self.x < -SHARK_SIZE):
+            self.active = False
+            
+    def catch_swimmer(self):
+        """Hai fängt Schwimmer und beginnt abzutauchen"""
+        self.has_caught = True
+        self.is_diving = True
+        self.dive_timer = 0
+        
+        # Schwimmer wird zurück zum Start gesetzt
+        self.target.y = 50
+        # Ausdauer nur für Spieler zurücksetzen
+        if self.target.is_player:
+            self.target.stamina_float = MAX_STAMINA
+        
+    def draw(self):
+        """Zeichnet den Hai"""
+        if not self.active:
+            return
+            
+        # Transparenz während des Abtauchens
+        alpha = 255
+        if self.is_diving:
+            alpha = int(255 * (1 - self.dive_timer / self.dive_duration))
+            alpha = max(50, alpha)  # Mindest-Transparenz
+            
+        # Hai-Körper (grau) - mit Transparenz
+        body_color = (*arcade.color.DARK_GRAY[:3], alpha)
+        arcade.draw_ellipse_filled(self.x, self.y, SHARK_SIZE * 1.5, SHARK_SIZE // 2, body_color)
+        
+        # Hai-Kopf (dunkler) - in Bewegungsrichtung
+        head_x = self.x + (SHARK_SIZE//3 if self.from_left else -SHARK_SIZE//3)
+        head_color = (*arcade.color.GRAY[:3], alpha)
+        arcade.draw_ellipse_filled(head_x, self.y, SHARK_SIZE//2, SHARK_SIZE//3, head_color)
+        
+        # Zähne (weiß) - zeigen in Bewegungsrichtung
+        tooth_color = (*arcade.color.WHITE[:3], alpha)
+        for i in range(3):
+            tooth_x = head_x + (5 if self.from_left else -5)
+            tooth_y = self.y - 5 + i * 5
+            arcade.draw_triangle_filled(tooth_x, tooth_y, 
+                                      tooth_x + (3 if self.from_left else -3), tooth_y + 3,
+                                      tooth_x + (3 if self.from_left else -3), tooth_y - 3,
+                                      tooth_color)
+        
+        # Hai-Schwanzflosse - hinten am Körper
+        fin_x = self.x + (-SHARK_SIZE//2 if self.from_left else SHARK_SIZE//2)
+        fin_color = (*arcade.color.DARK_GRAY[:3], alpha)
+        arcade.draw_triangle_filled(fin_x, self.y,
+                                  fin_x + (-SHARK_SIZE//3 if self.from_left else SHARK_SIZE//3), self.y + SHARK_SIZE//4,
+                                  fin_x + (-SHARK_SIZE//3 if self.from_left else SHARK_SIZE//3), self.y - SHARK_SIZE//4,
+                                  fin_color)
+        
+        # Luftblasen während des Abtauchens
+        if self.is_diving:
+            import time
+            for i in range(3):
+                bubble_x = self.x + random.randint(-10, 10)
+                bubble_y = self.y + 20 + i * 8
+                bubble_size = random.randint(2, 5)
+                arcade.draw_circle_filled(bubble_x, bubble_y, bubble_size, arcade.color.LIGHT_BLUE)
+
 class SwimmingGame(arcade.View):
     def __init__(self):
         super().__init__()
@@ -174,6 +310,16 @@ class SwimmingGame(arcade.View):
         self.game_finished = False
         self.winner = None
         
+        # Gefahren zurücksetzen
+        self.dangers = []
+        self.shark_spawn_timer = 0
+        self.next_shark_spawn = random.uniform(SHARK_SPAWN_MIN, SHARK_SPAWN_MAX)
+        
+        # Gefahren-System
+        self.dangers = []
+        self.shark_spawn_timer = 0
+        self.next_shark_spawn = random.uniform(SHARK_SPAWN_MIN, SHARK_SPAWN_MAX)
+        
     def on_update(self, delta_time):
         """Update-Methode für Animationen"""
         if not self.game_finished:
@@ -185,6 +331,35 @@ class SwimmingGame(arcade.View):
                 if swimmer.y >= SCREEN_HEIGHT - 70:
                     self.game_finished = True
                     self.winner = swimmer
+                    
+            # Gefahren-System updaten
+            self.update_dangers(delta_time)
+    
+    def update_dangers(self, delta_time):
+        """Update für alle Gefahren"""
+        # Hai-Spawn Timer
+        self.shark_spawn_timer += delta_time
+        if self.shark_spawn_timer >= self.next_shark_spawn:
+            self.spawn_shark()
+            self.shark_spawn_timer = 0
+            self.next_shark_spawn = random.uniform(SHARK_SPAWN_MIN, SHARK_SPAWN_MAX)
+            
+        # Update alle aktiven Gefahren
+        for danger in self.dangers[:]:  # Copy list to avoid modification during iteration
+            danger.update(delta_time, self.swimmers)
+            if not danger.active:
+                self.dangers.remove(danger)
+                
+    def spawn_shark(self):
+        """Spawnt einen neuen Hai"""
+        # Wähle zufälligen Schwimmer als Ziel (bevorzuge Schwimmer weiter oben)
+        active_swimmers = [s for s in self.swimmers if s.y > 100]  # Nur Schwimmer die schon etwas geschwommen sind
+        if active_swimmers:
+            # Wahrscheinlichkeit basierend auf Position - weiter vorne = wahrscheinlicher
+            weights = [s.y for s in active_swimmers]
+            target = random.choices(active_swimmers, weights=weights)[0]
+            shark = Shark(target)
+            self.dangers.append(shark)
     
     def on_draw(self):
         """Zeichnet das Spiel"""
@@ -196,6 +371,10 @@ class SwimmingGame(arcade.View):
         # Alle Schwimmer zeichnen
         for swimmer in self.swimmers:
             swimmer.draw()
+            
+        # Alle Gefahren zeichnen
+        for danger in self.dangers:
+            danger.draw()
         
         # UI-Informationen zeichnen
         self.draw_ui()
@@ -327,3 +506,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+    
