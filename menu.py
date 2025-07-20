@@ -1,4 +1,3 @@
-# menu.py - Startbildschirm und Menüs
 import arcade
 import math
 from config import *
@@ -264,7 +263,7 @@ class PauseView(arcade.View):
             self.window.show_view(menu_view)
 
 class GameOverView(arcade.View):
-    """Game-Over-Bildschirm mit Statistiken"""
+    """Game-Over-Bildschirm mit 8-Bit Statistiken"""
     
     def __init__(self, winner, player_strokes, survived_time):
         super().__init__()
@@ -274,80 +273,198 @@ class GameOverView(arcade.View):
         self.player_strokes = player_strokes
         self.survived_time = survived_time
         self.animation_timer = 0
+        self.pixel_effects = []
+        
+        # Generiere Pixel-Effekte basierend auf Ergebnis
+        self._generate_pixel_effects()
+    
+    def _generate_pixel_effects(self):
+        """Generiert 8-Bit Pixel-Effekte"""
+        import random
+        
+        for i in range(50):
+            effect = {
+                'x': random.randint(0, SCREEN_WIDTH),
+                'y': random.randint(0, SCREEN_HEIGHT),
+                'speed': random.randint(20, 80),
+                'size': random.randint(2, 8),
+                'color': arcade.color.GOLD if self.winner and self.winner.is_player else arcade.color.RED,
+                'direction': random.randint(0, 360)
+            }
+            self.pixel_effects.append(effect)
     
     def on_update(self, delta_time):
-        """Update für Animationen"""
+        """Update für 8-Bit Animationen"""
         self.animation_timer += delta_time
+        
+        # Update Pixel-Effekte
+        for effect in self.pixel_effects:
+            import math
+            effect['x'] += math.cos(math.radians(effect['direction'])) * effect['speed'] * delta_time
+            effect['y'] += math.sin(math.radians(effect['direction'])) * effect['speed'] * delta_time
+            
+            # Wrap around screen
+            effect['x'] = effect['x'] % SCREEN_WIDTH
+            effect['y'] = effect['y'] % SCREEN_HEIGHT
     
     def on_draw(self):
-        """Zeichnet den Game-Over-Bildschirm"""
+        """Zeichnet den 8-Bit Game-Over-Bildschirm"""
         self.clear()
         
-        # Hintergrund-Effekt
-        self._draw_background_effect()
+        # 8-Bit Hintergrund-Raster
+        self._draw_pixel_grid()
         
-        # Titel
+        # Pixel-Effekte
+        self._draw_pixel_effects()
+        
+        # Haupt-Content-Box
+        self._draw_content_box()
+        
+        # Text-Content
+        self._draw_game_over_text()
+        
+        # 8-Bit Statistiken
+        self._draw_pixel_statistics()
+        
+        # Navigation
+        self._draw_navigation()
+    
+    def _draw_pixel_grid(self):
+        """Zeichnet 8-Bit Hintergrund-Raster"""
+        grid_size = 16
+        grid_color = (*LANE_COLOR[:3], 30)
+        
+        # Animiertes Raster
+        offset = int(self.animation_timer * 10) % grid_size
+        
+        for x in range(-offset, SCREEN_WIDTH + grid_size, grid_size):
+            arcade.draw_line(x, 0, x, SCREEN_HEIGHT, grid_color, 1)
+        
+        for y in range(-offset, SCREEN_HEIGHT + grid_size, grid_size):
+            arcade.draw_line(0, y, SCREEN_WIDTH, y, grid_color, 1)
+    
+    def _draw_pixel_effects(self):
+        """Zeichnet animierte Pixel-Effekte"""
+        for effect in self.pixel_effects:
+            # Pixelige Partikel
+            arcade.draw_rectangle_filled(effect['x'], effect['y'], 
+                                       effect['size'], effect['size'], 
+                                       effect['color'])
+    
+    def _draw_content_box(self):
+        """Zeichnet die Haupt-Content-Box"""
+        box_width, box_height = 500, 400
+        box_x = SCREEN_WIDTH // 2 - box_width // 2
+        box_y = SCREEN_HEIGHT // 2 - box_height // 2
+        
+        # Box-Hintergrund mit Transparenz
+        arcade.draw_rectangle_filled(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2,
+                                   box_width, box_height, 
+                                   (*arcade.color.DARK_BLUE[:3], 200))
+        
+        # Doppelter pixeliger Rahmen
+        ASCIIArt.draw_pixel_border(box_x, box_y, box_width, box_height, 
+                                  arcade.color.WHITE, 4)
+        ASCIIArt.draw_pixel_border(box_x + 8, box_y + 8, box_width - 16, box_height - 16, 
+                                  arcade.color.YELLOW, 2)
+    
+    def _draw_game_over_text(self):
+        """Zeichnet den Haupt-Game-Over-Text"""
         if self.winner is None:
             title = "GAME OVER"
-            subtitle = "Du wurdest gefressen!"
+            subtitle = "GEFRESSEN!"
             title_color = arcade.color.RED
         elif self.winner.is_player:
-            title = "SIEG!"
-            subtitle = "Du hast gewonnen!"
+            title = "VICTORY!"
+            subtitle = "DU HAST GEWONNEN!"
             title_color = arcade.color.GREEN
         else:
-            title = "NIEDERLAGE"
-            subtitle = "Besser beim nächsten Mal!"
+            title = "DEFEAT"
+            subtitle = "VERLOREN!"
             title_color = arcade.color.ORANGE
         
-        # Animierter Titel
-        title_y = SCREEN_HEIGHT - 150 + math.sin(self.animation_timer * 2) * 10
-        arcade.draw_text(title, SCREEN_WIDTH // 2, title_y,
-                        title_color, 48, anchor_x="center")
+        # Animierter Titel mit Pixel-Effekt
+        title_y = SCREEN_HEIGHT // 2 + 120
         
-        arcade.draw_text(subtitle, SCREEN_WIDTH // 2, SCREEN_HEIGHT - 200,
-                        arcade.color.WHITE, 24, anchor_x="center")
+        # Glow-Effekt für Titel
+        for i in range(3):
+            glow_color = (*title_color[:3], 100 - i * 30)
+            draw_title_text(title, SCREEN_WIDTH // 2, title_y,
+                           48 + i * 4, glow_color, retro=False, anchor_x="center")
         
-        # Statistiken
-        self._draw_statistics()
+        # Haupttitel
+        draw_title_text(title, SCREEN_WIDTH // 2, title_y,
+                       48, title_color, retro=False, anchor_x="center")
         
-        # Optionen
-        arcade.draw_text("R - Nochmal spielen", SCREEN_WIDTH // 2, 120,
-                        arcade.color.YELLOW, 20, anchor_x="center")
-        
-        arcade.draw_text("ESC - Hauptmenü", SCREEN_WIDTH // 2, 80,
-                        arcade.color.WHITE, 18, anchor_x="center")
+        # Untertitel
+        draw_pixel_text(subtitle, SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 70,
+                       24, arcade.color.WHITE, outline=True, anchor_x="center")
     
-    def _draw_background_effect(self):
-        """Zeichnet Hintergrund-Effekt je nach Ergebnis"""
-        if self.winner is None:
-            # Hai-Silhouetten für Game Over
-            for i in range(3):
-                x = SCREEN_WIDTH // 2 + math.sin(self.animation_timer + i) * 100
-                y = SCREEN_HEIGHT // 2 + math.cos(self.animation_timer * 0.5 + i) * 50
-                arcade.draw_ellipse_filled(x, y, 60, 20, (100, 100, 100, 100))
-        elif self.winner.is_player:
-            # Goldene Partikel für Sieg
-            for i in range(20):
-                x = (i * 30 + self.animation_timer * 50) % SCREEN_WIDTH
-                y = SCREEN_HEIGHT // 2 + math.sin(self.animation_timer * 3 + i) * 100
-                size = 3 + math.sin(self.animation_timer * 4 + i) * 2
-                arcade.draw_circle_filled(x, y, size, arcade.color.GOLD)
+    def _draw_pixel_statistics(self):
+        """Zeichnet 8-Bit Statistiken"""
+        stats_y = SCREEN_HEIGHT // 2 + 10
+        
+        # Statistiken-Titel
+        draw_pixel_text("=== STATISTIKEN ===", SCREEN_WIDTH // 2, stats_y + 30,
+                       18, arcade.color.CYAN, outline=True, anchor_x="center")
+        
+        # ASCII-Art Trenner
+        draw_8bit_text("+" + "-" * 20 + "+", SCREEN_WIDTH // 2, stats_y,
+                      'small', 12, arcade.color.GRAY, anchor_x="center")
+        
+        # Schwimmzüge mit 8-Bit Icon
+        stroke_text = f"SCHWIMMZUEGE: {self.player_strokes:03d}"
+        draw_pixel_text(stroke_text, SCREEN_WIDTH // 2, stats_y - 25,
+                       16, arcade.color.WHITE, outline=False, anchor_x="center")
+        
+        # Überlebenszeit
+        time_text = f"ZEIT: {self.survived_time:06.2f}s"
+        draw_pixel_text(time_text, SCREEN_WIDTH // 2, stats_y - 50,
+                       16, arcade.color.WHITE, outline=False, anchor_x="center")
+        
+        # Score-Berechnung (8-Bit Style)
+        score = int(self.player_strokes * 10 + self.survived_time * 5)
+        score_text = f"SCORE: {score:05d}"
+        draw_pixel_text(score_text, SCREEN_WIDTH // 2, stats_y - 75,
+                       16, arcade.color.YELLOW, outline=True, anchor_x="center")
+        
+        # ASCII-Art Trenner
+        draw_8bit_text("+" + "-" * 20 + "+", SCREEN_WIDTH // 2, stats_y - 100,
+                      'small', 12, arcade.color.GRAY, anchor_x="center")
     
-    def _draw_statistics(self):
-        """Zeichnet Spiel-Statistiken"""
-        stats_y = SCREEN_HEIGHT // 2
+    def _draw_navigation(self):
+        """Zeichnet 8-Bit Navigation"""
+        nav_y = SCREEN_HEIGHT // 2 - 120
         
-        arcade.draw_text("STATISTIKEN", SCREEN_WIDTH // 2, stats_y + 50,
-                        arcade.color.CYAN, 20, anchor_x="center")
+        # Pixelige Buttons
+        button_width = 180
+        button_height = 40
+        button_spacing = 220
         
-        arcade.draw_text(f"Schwimmzüge: {self.player_strokes}", 
-                        SCREEN_WIDTH // 2, stats_y,
-                        arcade.color.WHITE, 16, anchor_x="center")
+        # Restart Button
+        restart_x = SCREEN_WIDTH // 2 - button_spacing // 2
+        ASCIIArt.draw_pixel_button(restart_x - button_width // 2, nav_y, 
+                                  button_width, button_height,
+                                  "NOCHMAL [R]", pressed=False,
+                                  bg_color=arcade.color.DARK_GREEN,
+                                  text_color=arcade.color.WHITE)
         
-        arcade.draw_text(f"Überlebenszeit: {self.survived_time:.1f}s", 
-                        SCREEN_WIDTH // 2, stats_y - 30,
-                        arcade.color.WHITE, 16, anchor_x="center")
+        # Menu Button  
+        menu_x = SCREEN_WIDTH // 2 + button_spacing // 2
+        ASCIIArt.draw_pixel_button(menu_x - button_width // 2, nav_y,
+                                  button_width, button_height, 
+                                  "MENU [ESC]", pressed=False,
+                                  bg_color=arcade.color.DARK_RED,
+                                  text_color=arcade.color.WHITE)
+        
+        # Blinkende Anweisung
+        if int(self.animation_timer * 3) % 2:
+            draw_pixel_text("WAEHLE EINE OPTION", SCREEN_WIDTH // 2, nav_y - 60,
+                           14, arcade.color.YELLOW, outline=True, anchor_x="center")
+        
+        # 8-Bit Copyright
+        draw_8bit_text("(C) 2025 SWIMMING GIM", SCREEN_WIDTH // 2, 30,
+                      'small', 10, arcade.color.GRAY, anchor_x="center")
     
     def on_key_press(self, key, modifiers):
         """Behandelt Tasteneingaben"""
